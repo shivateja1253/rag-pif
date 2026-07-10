@@ -1,0 +1,13 @@
+metric,value
+precision_class0,0.53
+recall_class0,1.0
+f1_class0,0.69
+precision_class1,1.0
+recall_class1,0.12
+f1_class1,0.21
+accuracy,0.56
+direct_detection_rate,0.135
+benign_fpr,0.0
+obfuscated_detection_rate,0.0
+unicode_detection_rate,0.22
+zero_width_detection_rate,0.0
