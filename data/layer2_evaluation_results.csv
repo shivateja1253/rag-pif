@@ -1,0 +1,6 @@
+metric,value
+f1,0.999
+precision,0.998
+recall,1.0
+fpr,0.002
+threshold,0.45
