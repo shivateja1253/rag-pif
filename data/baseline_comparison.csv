@@ -1,0 +1,3 @@
+system,f1,detection_rate,fpr,avg_latency_ms
+RAG without firewall,0.0,0.0,0.0,0.0
+RAG-PIF (L1+L2),0.9990917347865577,1.0,0.002,8.674
