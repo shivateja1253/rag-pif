@@ -137,6 +137,26 @@ def build_retrieval_index(_model, chunks_tuple):
 
 retrieval_index = build_retrieval_index(model, tuple(base_chunks))
 
+
+# Initialize firewall state
+if 'firewall_on' not in st.session_state:
+    st.session_state.firewall_on = True
+
+# Firewall toggle
+col_a, col_b = st.columns([3, 1])
+with col_b:
+    if st.session_state.firewall_on:
+        if st.button("🔴 Disable Firewall", use_container_width=True):
+            st.session_state.firewall_on = False
+            st.rerun()
+    else:
+        if st.button("🟢 Enable Firewall", use_container_width=True):
+            st.session_state.firewall_on = True
+            st.rerun()
+
+if not st.session_state.firewall_on:
+    st.warning("⚠️ Firewall is OFF — all content passes through unfiltered. For demo purposes only.")
+
 # Session state
 if 'messages' not in st.session_state:
     st.session_state.messages = []
@@ -187,12 +207,15 @@ if st.session_state.pending_input:
     typing_placeholder.markdown('<div class="typing"><span></span><span></span><span></span></div>', unsafe_allow_html=True)
 
     start = time.time()
-    b1, pattern = layer1_filter(query)
-    b2, score = layer2_filter(query, model, injection_index)
+    if st.session_state.firewall_on:
+        b1, pattern = layer1_filter(query)
+        b2, score = layer2_filter(query, model, injection_index)
+    else:
+        b1, b2, pattern, score = False, False, None, 0.0
 
     typing_placeholder.empty()
 
-    if b1 or b2:
+    if st.session_state.firewall_on and (b1 or b2):
         layer = 1 if b1 else 2
         reason = f'Pattern: "{pattern}"' if b1 else f'Similarity score: {score}'
         elapsed = round((time.time() - start) * 1000)
