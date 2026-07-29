@@ -1,7 +1,9 @@
 import streamlit as st
 import faiss
 import numpy as np
+import torch
 from sentence_transformers import SentenceTransformer
+from transformers import RobertaTokenizerFast, RobertaForSequenceClassification
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import wikipediaapi
 import re
@@ -45,14 +47,22 @@ section[data-testid="stSidebar"] { background: white !important; }
 st.markdown("""
 <div class="chat-header">
     <h1>💬 RAG-PIF Chatbot</h1>
-    <p><span class="online-dot"></span>Protected by 2-layer firewall · Knowledge base active</p>
+    <p><span class="online-dot"></span>Protected by 3-layer firewall · Knowledge base active</p>
 </div>
 """, unsafe_allow_html=True)
 
-LOG_PATH = '/content/drive/MyDrive/rag-pif/data/security_log.json'
+BASE = '/content/drive/MyDrive/rag-pif'
+LOG_PATH = f'{BASE}/data/security_log.json'
 
+# ---------------------------------------------------------------------
+# LAYER 1 — regex + context-aware suppression (v3)
+# Base pattern list kept exactly as this demo already had it (includes
+# extras beyond src/layer1_filter.py -- base64 markers, roleplay framing
+# -- that were already tuned here separately). Context-suppression logic
+# layered on top, same as the benchmarked layer1_filter_v3.
+# ---------------------------------------------------------------------
 INJECTION_PATTERNS = [
-    r'ignore\s+(\w+\s+)*(instructions?|prompt|context|rules?)',
+    r'ignore\s+(\w+\s+)*(instructions?|prompt|context|rules?|guidelines?)',
     r'forget\s+(everything|all|previous|your\s+instructions)',
     r'disregard\s+(the\s+|all\s+|previous\s+)?(above|instructions?|context)',
     r'you\s+are\s+now\s+(?!an?\s+assistant)',
@@ -72,7 +82,107 @@ INJECTION_PATTERNS = [
     r'if\s+.{0,30}(reveal|ignore|forget|bypass|override)',
     r'aWdub3Jl|aWdub3JlIGFsbA|cHJldGVuZA|Zm9yZ2V0',
 ]
-THRESHOLD = 0.45
+ACT_AS_PATTERN = r'act\s+as\s+(?!an?\s+assistant)'
+NO_RESTRICTIONS_PATTERN = r'no\s+(restrictions?|filters?|limits?)'
+GENERIC_PATTERNS = {ACT_AS_PATTERN, NO_RESTRICTIONS_PATTERN}
+
+RESEARCH_PREFIXES = [
+    r'(researchers?|scientists?|academics?|authors?)\s+(found|showed|discovered|studied|documented|analyzed|reported|noted|observed|described)\s+that\s+',
+    r'(attackers?|hackers?|adversaries?|users?|people)\s+(use[sd]?|using|say[s]?|saying|type[sd]?|typing|write[s]?|writing|send[s]?|sending|try(ing|s)?|attempt(s|ing)?|employ(s|ing)?|exploit(s|ing)?)\s+',
+    r'(example|e\.g\.|such as|including|like|called|known as|referred to as)\s*[:\-]?\s*',
+    r'(the\s+)?(phrase|patterns?|technique|method|attack|prompt|command|string|text|keyword)\s+',
+    r'(this|the)\s+(paper|study|research|work|course|tutorial|book|article|report|chapter|section)\s+(explains?|describes?|analyzes?|covers?|discusses?|presents?|shows?|examines?)\s+',
+    r'(detect|detecting|detection of|blocking|blocked|prevents?|resists?|defend|defense against|guards? against)\s+',
+    r'(test|testing|tested|evaluate|evaluating|benchmark)\s+',
+    r'(warning|warns?|alert|caution|note|notice):\s*',
+    r'(vulnerability|exploit|flaw|weakness|bug)\s+(report|found|discovered|involves?)\s+',
+    r'(labeled?|annotated?|classified|categorized)\s+as\s+',
+    r'(cannot|can\'t|refused?|rejected?|resisted?|blocked?)\s+(to\s+)?(comply|follow|accept|process)\s+',
+    r'(in\s+)?(the\s+)?(novel|movie|film|short\s+story|story|fiction|game|book|comic\s+book|comic|screenplay|plot|fantasy|satire|thriller|animation|dystopian|sci-?fi|science\s+fiction|graphic\s+novel|cartoon)[\s:]+',
+    r'(the\s+)?(classifier|model|system|firewall|filter|detector)\s+(was\s+)?(trained?|designed?|built?|created?)\s+',
+    r'(contains?|includes?|has|with)\s+(examples?|samples?|instances?|cases?)\s+of\s+',
+    r'(how|why|what|when|where)\s+(do|does|did|can|could|would|should|are|is)\s+',
+    r'(our|the|this)\s+(dataset|corpus|benchmark|evaluation|test\s+set)\s+',
+    r'(research|stud(y|ies)|analysis)\s+(on|into|of|about)\s+',
+    r'(news|breaking(\s+news)?|report|investigation|analysis|feature|industry\s+report|tech\s+report|journalist\s+investigation|case\s+study)\s*[:\-]?\s*',
+]
+RESEARCH_SUFFIXES = [
+    r'\s+(is|are|was|were)\s+(a|an|the)?\s*(common|known|typical|classic|standard|well-known|popular)\s+(attack|technique|method|pattern|prompt|example)',
+    r'\s+(attack|technique|method|pattern|prompt|example|attempt)',
+    r'\s+in\s+(the|our|this)\s+(paper|study|dataset|benchmark|literature|research)',
+    r'\s+to\s+(test|evaluate|detect|identify|classify|recognize)',
+    r'\s+style\s+(attack|prompt|injection|jailbreak)',
+]
+RESEARCH_SIGNALS = [
+    r'\b(paper|study|research|tutorial|course|benchmark|dataset|classifier|detector|firewall)\b',
+    r'\b(researchers?|academics?|scientists?)\b',
+    r'\b(evaluated?|analyzed?|detected?|classified?|trained?)\b',
+    r'\b(false\s+positive|true\s+positive|precision|recall|f1|accuracy)\b',
+]
+STRONG_SIGNALS = [
+    r'\b(OWASP|CVE|vulnerability|penetration\s+test(ing)?|pen\s+test|red\s+team(ing)?|security\s+research(ers)?|honeypot)\b',
+]
+AI_CONTEXT_KEYWORDS = [
+    r'\bai\b', r'\ba\.i\.\b', r'\bassistant\b', r'\bchatbot\b', r'\bbot\b',
+    r'\bmodel\b', r'\bllm\b', r'\bgpt\b', r'\bprompt\b', r'\binstructions?\b',
+    r'\bjailbreak\b', r'\bguidelines?\b', r'\bsystem\b', r'\bchat\b', r'\boverride\b',
+]
+BENIGN_ROLE_SUFFIX = r'^\s*(my|your|our|a|an|the)\s+(assistant|helper|guide|tour\s+guide|tutor|coach|translator|planner|advisor|consultant)\b'
+QUOTE_CHARS = ['"', "'", '\u201c', '\u201d', '\u00ab', '\u00bb', '`']
+
+L2_THRESHOLD = 0.50
+L3_THRESHOLD = 0.50
+
+def is_research_context(text, match_start, match_end, matched_pattern):
+    prefix_window = text[max(0, match_start - 200):match_start].lower()
+    suffix_window = text[match_end:min(len(text), match_end + 100)].lower()
+    full_text_lower = text.lower()
+    before_match = text[:match_start]
+
+    for q in QUOTE_CHARS:
+        if before_match.count(q) % 2 == 1:
+            return True
+    for prefix in RESEARCH_PREFIXES:
+        if re.search(prefix, prefix_window):
+            return True
+    for suffix in RESEARCH_SUFFIXES:
+        if re.search(suffix, suffix_window):
+            return True
+    if matched_pattern == ACT_AS_PATTERN and re.search(BENIGN_ROLE_SUFFIX, suffix_window):
+        return True
+    for sig in STRONG_SIGNALS:
+        if re.search(sig, full_text_lower):
+            return True
+    signal_count = sum(1 for sig in RESEARCH_SIGNALS if re.search(sig, full_text_lower))
+    if signal_count >= 2:
+        return True
+    if matched_pattern in GENERIC_PATTERNS:
+        if not any(re.search(kw, full_text_lower) for kw in AI_CONTEXT_KEYWORDS):
+            return True
+    return False
+
+def layer1_filter(text):
+    normalized = unicodedata.normalize('NFKC', text).lower()
+    for p in INJECTION_PATTERNS:
+        m = re.search(p, normalized)
+        if m:
+            if is_research_context(text, m.start(), m.end(), p):
+                continue
+            return True, m.group()
+    return False, None
+
+def layer2_filter(text, model, injection_index):
+    vec = model.encode([text], normalize_embeddings=True).astype('float32')
+    D, _ = injection_index.search(vec, k=1)
+    score = float(D[0][0])
+    return score > L2_THRESHOLD, round(score, 4)
+
+@torch.no_grad()
+def layer3_filter(text, l3_model, l3_tokenizer, device):
+    inputs = l3_tokenizer(text, return_tensors="pt", truncation=True, max_length=256).to(device)
+    logits = l3_model(**inputs).logits
+    prob = float(torch.softmax(logits, dim=-1)[0][1])
+    return prob > L3_THRESHOLD, round(prob, 4)
 
 def save_log(entry):
     log = []
@@ -84,24 +194,18 @@ def save_log(entry):
     with open(LOG_PATH, 'w') as f:
         json.dump(log, f)
 
-def layer1_filter(text):
-    normalized = unicodedata.normalize('NFKC', text).lower()
-    for p in INJECTION_PATTERNS:
-        m = re.search(p, normalized)
-        if m: return True, m.group()
-    return False, None
-
-def layer2_filter(text, model, injection_index):
-    vec = model.encode([text], normalize_embeddings=True).astype('float32')
-    D, _ = injection_index.search(vec, k=1)
-    score = float(D[0][0])
-    return score > THRESHOLD, round(score, 4)
-
 @st.cache_resource(show_spinner=False)
 def load_models():
     model = SentenceTransformer('all-MiniLM-L6-v2')
-    injection_index = faiss.read_index('/content/drive/MyDrive/rag-pif/data/injection_index.faiss')
-    return model, injection_index
+    injection_index = faiss.read_index(f'{BASE}/data/injection_index.faiss')
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    l3_tokenizer = RobertaTokenizerFast.from_pretrained(f'{BASE}/models/roberta_tokenizer_v2')
+    l3_model = RobertaForSequenceClassification.from_pretrained(f'{BASE}/models/roberta_v2_hf')
+    l3_model.to(device)
+    l3_model.eval()
+
+    return model, injection_index, l3_model, l3_tokenizer, device
 
 @st.cache_data(show_spinner=False)
 def load_knowledge_base():
@@ -123,8 +227,8 @@ def load_knowledge_base():
             all_chunks.extend(splitter.split_text(page.text[:6000]))
     return all_chunks
 
-with st.spinner('Loading...'):
-    model, injection_index = load_models()
+with st.spinner('Loading 3-layer firewall...'):
+    model, injection_index, l3_model, l3_tokenizer, device = load_models()
     base_chunks = load_knowledge_base()
 
 @st.cache_resource(show_spinner=False)
@@ -136,6 +240,20 @@ def build_retrieval_index(_model, chunks_tuple):
     return index
 
 retrieval_index = build_retrieval_index(model, tuple(base_chunks))
+
+
+def run_firewall(text):
+    """Runs the full L1 -> L2 -> L3 cascade. Returns (blocked, layer, reason)."""
+    b1, pattern = layer1_filter(text)
+    if b1:
+        return True, 1, f'Pattern: "{pattern}"'
+    b2, score = layer2_filter(text, model, injection_index)
+    if b2:
+        return True, 2, f'Similarity score: {score}'
+    b3, conf = layer3_filter(text, l3_model, l3_tokenizer, device)
+    if b3:
+        return True, 3, f'RoBERTa confidence: {conf}'
+    return False, None, None
 
 
 # Initialize firewall state
@@ -202,25 +320,23 @@ if st.session_state.pending_input:
     st.session_state.pending_input = None
     st.session_state.messages.append({'role': 'user', 'content': query})
 
-    # Show typing indicator
     typing_placeholder = st.empty()
     typing_placeholder.markdown('<div class="typing"><span></span><span></span><span></span></div>', unsafe_allow_html=True)
 
     start = time.time()
     if st.session_state.firewall_on:
-        b1, pattern = layer1_filter(query)
-        b2, score = layer2_filter(query, model, injection_index)
+        blocked, layer, reason = run_firewall(query)
     else:
-        b1, b2, pattern, score = False, False, None, 0.0
+        blocked, layer, reason = False, None, None
 
     typing_placeholder.empty()
 
-    if st.session_state.firewall_on and (b1 or b2):
-        layer = 1 if b1 else 2
-        reason = f'Pattern: "{pattern}"' if b1 else f'Similarity score: {score}'
+    if blocked:
         elapsed = round((time.time() - start) * 1000)
+        type_map = {1: 'direct', 2: 'semantic', 3: 'semantic'}
         st.session_state.messages.append({'role': 'blocked', 'content': ''})
-        save_log({'query': query, 'blocked': True, 'layer': layer, 'reason': reason, 'time_ms': elapsed, 'type': 'direct' if b1 else 'semantic'})
+        save_log({'query': query, 'blocked': True, 'layer': layer, 'reason': reason,
+                  'time_ms': elapsed, 'type': type_map.get(layer, 'semantic')})
     else:
         all_chunks = base_chunks + st.session_state.pdf_chunks
         if st.session_state.pdf_chunks:
@@ -237,13 +353,10 @@ if st.session_state.pending_input:
 
         safe_chunks = []
         for chunk in retrieved:
-            cb1, cp = layer1_filter(chunk)
-            if cb1:
-                save_log({'query': f'[Retrieved] {chunk[:60]}...', 'blocked': True, 'layer': 1, 'reason': f'Pattern: "{cp}"', 'time_ms': 0, 'type': 'indirect'})
-                continue
-            cb2, cs = layer2_filter(chunk, model, injection_index)
-            if cb2:
-                save_log({'query': f'[Retrieved] {chunk[:60]}...', 'blocked': True, 'layer': 2, 'reason': f'Similarity: {cs}', 'time_ms': 0, 'type': 'indirect'})
+            c_blocked, c_layer, c_reason = run_firewall(chunk)
+            if c_blocked:
+                save_log({'query': f'[Retrieved] {chunk[:60]}...', 'blocked': True, 'layer': c_layer,
+                          'reason': c_reason, 'time_ms': 0, 'type': 'indirect'})
                 continue
             safe_chunks.append(chunk)
 
@@ -271,18 +384,15 @@ if uploaded_file and uploaded_file.name not in st.session_state.processed_files:
             splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=30)
             new_chunks = splitter.split_text(doc_text)
             clean, flagged = [], 0
-            for chunk in new_chunks:
-                b1, cp = layer1_filter(chunk)
-                if b1:
-                    flagged += 1
-                    save_log({'query': f'[PDF] {chunk[:60]}...', 'blocked': True, 'layer': 1, 'reason': f'Pattern: "{cp}"', 'time_ms': 0, 'type': 'indirect'})
-                    continue
-                b2, cs = layer2_filter(chunk, model, injection_index)
-                if b2:
-                    flagged += 1
-                    save_log({'query': f'[PDF] {chunk[:60]}...', 'blocked': True, 'layer': 2, 'reason': f'Similarity: {cs}', 'time_ms': 0, 'type': 'indirect'})
-                    continue
-                clean.append(chunk)
+            with st.spinner(f'Scanning {len(new_chunks)} chunks through 3-layer firewall...'):
+                for chunk in new_chunks:
+                    c_blocked, c_layer, c_reason = run_firewall(chunk)
+                    if c_blocked:
+                        flagged += 1
+                        save_log({'query': f'[PDF] {chunk[:60]}...', 'blocked': True, 'layer': c_layer,
+                                  'reason': c_reason, 'time_ms': 0, 'type': 'indirect'})
+                        continue
+                    clean.append(chunk)
             st.session_state.pdf_chunks.extend(clean)
             st.session_state.processed_files.add(uploaded_file.name)
             if flagged > 0:
@@ -308,18 +418,15 @@ if fetch_btn and url_input.strip():
             splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=30)
             new_chunks = splitter.split_text(clean_text[:10000])
             clean, flagged = [], 0
-            for chunk in new_chunks:
-                b1, cp = layer1_filter(chunk)
-                if b1:
-                    flagged += 1
-                    save_log({'query': f'[URL] {chunk[:60]}...', 'blocked': True, 'layer': 1, 'reason': f'Pattern: "{cp}"', 'time_ms': 0, 'type': 'indirect'})
-                    continue
-                b2, cs = layer2_filter(chunk, model, injection_index)
-                if b2:
-                    flagged += 1
-                    save_log({'query': f'[URL] {chunk[:60]}...', 'blocked': True, 'layer': 2, 'reason': f'Similarity: {cs}', 'time_ms': 0, 'type': 'indirect'})
-                    continue
-                clean.append(chunk)
+            with st.spinner(f'Scanning {len(new_chunks)} chunks through 3-layer firewall...'):
+                for chunk in new_chunks:
+                    c_blocked, c_layer, c_reason = run_firewall(chunk)
+                    if c_blocked:
+                        flagged += 1
+                        save_log({'query': f'[URL] {chunk[:60]}...', 'blocked': True, 'layer': c_layer,
+                                  'reason': c_reason, 'time_ms': 0, 'type': 'indirect'})
+                        continue
+                    clean.append(chunk)
             st.session_state.pdf_chunks.extend(clean)
             if flagged > 0:
                 st.error(f"⛔ {flagged} chunk(s) blocked from URL. {len(clean)} safe chunks added.")
