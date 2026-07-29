@@ -1,0 +1,12 @@
+streamlit
+faiss-cpu
+sentence-transformers
+transformers
+torch
+langchain-text-splitters
+wikipedia-api
+PyPDF2
+requests
+scikit-learn
+pandas
+numpy

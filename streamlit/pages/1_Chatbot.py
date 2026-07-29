@@ -51,8 +51,14 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-BASE = '/content/drive/MyDrive/rag-pif'
-LOG_PATH = f'{BASE}/data/security_log.json'
+import os as _os
+# Portable path resolution -- this repo copy is meant to be runnable after a
+# fresh `git clone`, not just from the original developer's Google Drive.
+# (During development the live demo ran directly off Drive with a hardcoded
+# path; this version resolves relative to the repo root instead.)
+REPO_ROOT = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+BASE = REPO_ROOT
+LOG_PATH = f'{BASE}/datasets/security_log.json'
 
 # ---------------------------------------------------------------------
 # LAYER 1 — regex + context-aware suppression (v3)
@@ -197,7 +203,7 @@ def save_log(entry):
 @st.cache_resource(show_spinner=False)
 def load_models():
     model = SentenceTransformer('all-MiniLM-L6-v2')
-    injection_index = faiss.read_index(f'{BASE}/data/injection_index.faiss')
+    injection_index = faiss.read_index(f'{BASE}/datasets/injection_index.faiss')
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     l3_tokenizer = RobertaTokenizerFast.from_pretrained(f'{BASE}/models/roberta_tokenizer_v2')
