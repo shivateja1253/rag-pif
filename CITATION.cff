@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use this work, please cite it as below."
+title: "RAG-PIF: A Multi-Layer Prompt Injection Firewall for Retrieval-Augmented Generation Systems"
+authors:
+  - family-names: "Amanda"
+    given-names: "Shiva Teja"
+date-released: 2026-07-30
+url: "https://github.com/shivateja1253/rag-pif"
+repository-code: "https://github.com/shivateja1253/rag-pif"
+license: MIT
+keywords:
+  - prompt-injection
+  - large-language-models
+  - retrieval-augmented-generation
+  - ai-security
+  - roberta
