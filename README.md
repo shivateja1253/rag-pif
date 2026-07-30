@@ -98,4 +98,3 @@ rag-pif/
 ## Citation
 If you use this work, please cite it -- see [CITATION.cff](CITATION.cff).
 
-## Target: IEEE Access
