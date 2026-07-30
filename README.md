@@ -7,36 +7,10 @@
 
 A multi-layer prompt injection firewall for Retrieval-Augmented Generation systems.
 
+## Architecture
+
 ![Architecture diagram](figures/architecture_diagram.svg)
 
-## Repository structure
-```
-rag-pif/
-├── streamlit/              # Demo application (3-layer firewall integrated)
-│   ├── Home.py
-│   ├── layer1_filter.py    # Layer 1: context-aware regex (v3)
-│   ├── layer2_embedding.py # Layer 2: FAISS embedding similarity
-│   ├── rag_firewall.py     # Full L1->L2->L3 cascade module
-│   └── pages/
-│       ├── 1_Chatbot.py
-│       └── 2_Dashboard.py
-├── models/                 # MODEL_CARD.md -- full checkpoint hosted on Hugging Face
-├── datasets/
-│   ├── samples/             # Small (20-row) samples of each dataset
-│   ├── DATASET_CARD.md      # Full datasets hosted on Hugging Face
-│   └── injection_index.faiss
-├── evaluation/
-│   ├── FINAL_benchmark_results.csv   # Production checkpoint (v2)
-│   ├── v3_benchmark_results.csv      # Experimental checkpoint
-│   ├── v4_benchmark_results.csv      # Experimental checkpoint
-│   └── scripts/final_benchmark.py    # Reproduce these results
-├── paper/
-├── figures/
-├── LICENSE
-└── CITATION.cff
-```
-
-## Architecture
 - **Layer 1**: Context-aware regex filter (v3) -- fast keyword/pattern matching with
   research/news/fiction context suppression to reduce false positives on benign
   security-discussion text.
@@ -49,7 +23,15 @@ rag-pif/
 All three layers cascade (L1 -> L2 -> L3, early exit on first block) via
 `streamlit/rag_firewall.py`, and are integrated end-to-end in the Streamlit demo.
 
-## Running the demo
+## Demo
+
+<!-- TODO: replace with demo GIF -- benign query -> blocked injection ->
+     research-framed text correctly passing -> leetspeak caught by Layer 3.
+     ![demo](figures/demo.gif) -->
+
+_GIF coming soon._
+
+## Quick start
 ```
 pip install -r requirements.txt
 streamlit run streamlit/Home.py
@@ -85,6 +67,33 @@ hashes) in `evaluation/FINAL_benchmark_results.csv`. Regenerate with
   [model card](https://huggingface.co/shivateja1253/rag-pif-roberta) for the full
   comparison table. This suggests the remaining false positives reflect a genuine
   precision/generalization tradeoff rather than a simple data-coverage gap.
+
+## Repository structure
+```
+rag-pif/
+├── streamlit/              # Demo application (3-layer firewall integrated)
+│   ├── Home.py
+│   ├── layer1_filter.py    # Layer 1: context-aware regex (v3)
+│   ├── layer2_embedding.py # Layer 2: FAISS embedding similarity
+│   ├── rag_firewall.py     # Full L1->L2->L3 cascade module
+│   └── pages/
+│       ├── 1_Chatbot.py
+│       └── 2_Dashboard.py
+├── models/                 # MODEL_CARD.md -- full checkpoint hosted on Hugging Face
+├── datasets/
+│   ├── samples/             # Small (20-row) samples of each dataset
+│   ├── DATASET_CARD.md      # Full datasets hosted on Hugging Face
+│   └── injection_index.faiss
+├── evaluation/
+│   ├── FINAL_benchmark_results.csv   # Production checkpoint (v2)
+│   ├── v3_benchmark_results.csv      # Experimental checkpoint
+│   ├── v4_benchmark_results.csv      # Experimental checkpoint
+│   └── scripts/final_benchmark.py    # Reproduce these results
+├── paper/
+├── figures/
+├── LICENSE
+└── CITATION.cff
+```
 
 ## Citation
 If you use this work, please cite it -- see [CITATION.cff](CITATION.cff).
