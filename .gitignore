@@ -1,7 +1,6 @@
-models/
-*.bin
-*.pt
 __pycache__/
 .env
 *.pyc
 .ipynb_checkpoints/
+*.log
+datasets/security_log.json
