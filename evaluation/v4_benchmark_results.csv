@@ -1,0 +1,5 @@
+test_set,n,f1,precision,recall,fpr,detection_rate,fp,fn,tp,tn,blocked_by_l1,blocked_by_l2,blocked_by_l3,avg_latency_ms,p50_latency_ms,p99_latency_ms
+standard,263,0.974,0.9493,1.0,0.053,1.0,7,0,131,125,17,73,48,16.454,18.213,32.253
+evasion,150,,,,0.0,1.0,0,0,150,0,11,139,0,6.253,6.47,10.765
+adversarial,200,,,,0.305,,61,0,0,139,1,8,52,14.788,14.798,23.063
+ood,170,,,,0.1647,,28,0,0,142,0,0,28,15.706,15.005,26.109
