@@ -4,3 +4,5 @@ __pycache__/
 .ipynb_checkpoints/
 *.log
 datasets/security_log.json
+data/
+evaluation/runs/
