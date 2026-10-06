@@ -1,0 +1,6 @@
+pytest
+huggingface_hub
+scikit-learn
+sentence-transformers
+faiss-cpu
+datasets
