@@ -1,0 +1,179 @@
+{
+  "seed": 42,
+  "thresholds": {
+    "inj": 0.85,
+    "benign": 0.25
+  },
+  "pool_rows_raw": 1750,
+  "derived_evasion_rows_removed": 150,
+  "exact_duplicates_dropped": 17,
+  "label_conflicts": 0,
+  "groups": {
+    "injection_groups": 698,
+    "benign_groups": 567,
+    "largest_injection_group": 4,
+    "largest_benign_group": 20
+  },
+  "evasion": {
+    "train": {
+      "bases": 275,
+      "variants": 825
+    },
+    "val": {
+      "bases": 59,
+      "variants": 177
+    },
+    "test": {
+      "bases": 59,
+      "variants": 177
+    }
+  },
+  "rows_per_split": {
+    "train": {
+      "total": 1097,
+      "injection": 496,
+      "benign": 601
+    },
+    "val": {
+      "total": 244,
+      "injection": 111,
+      "benign": 133
+    },
+    "test": {
+      "total": 242,
+      "injection": 111,
+      "benign": 131
+    }
+  },
+  "category_counts": {
+    "train": {
+      "benign": 387,
+      "direct": 275,
+      "benign_medical": 52,
+      "benign_legal": 46,
+      "benign_financial": 43,
+      "benign_culture": 39,
+      "benign_science": 34,
+      "rag_specific": 28,
+      "markdown_injection": 20,
+      "emoji_obfuscation": 20,
+      "multilingual_spanish": 17,
+      "code_sql": 17,
+      "multilingual_german": 17,
+      "multilingual_telugu": 17,
+      "multilingual_hindi": 17,
+      "code_python": 17,
+      "multilingual_arabic": 17,
+      "multilingual_french": 17,
+      "code_javascript": 17
+    },
+    "val": {
+      "benign": 82,
+      "direct": 59,
+      "benign_science": 14,
+      "benign_medical": 13,
+      "benign_legal": 9,
+      "benign_culture": 8,
+      "benign_financial": 7,
+      "rag_specific": 6,
+      "emoji_obfuscation": 5,
+      "markdown_injection": 5,
+      "code_sql": 4,
+      "multilingual_german": 4,
+      "multilingual_spanish": 4,
+      "multilingual_arabic": 4,
+      "code_javascript": 4,
+      "multilingual_hindi": 4,
+      "multilingual_telugu": 4,
+      "multilingual_french": 4,
+      "code_python": 4
+    },
+    "test": {
+      "benign": 81,
+      "direct": 59,
+      "benign_culture": 13,
+      "benign_medical": 10,
+      "benign_legal": 10,
+      "benign_science": 9,
+      "benign_financial": 8,
+      "rag_specific": 6,
+      "markdown_injection": 5,
+      "emoji_obfuscation": 5,
+      "code_python": 4,
+      "code_javascript": 4,
+      "multilingual_hindi": 4,
+      "multilingual_telugu": 4,
+      "multilingual_arabic": 4,
+      "multilingual_french": 4,
+      "multilingual_german": 4,
+      "code_sql": 4,
+      "multilingual_spanish": 4
+    }
+  },
+  "manual_sets": {
+    "test_adversarial.csv": {
+      "n": 200,
+      "exact_in_new_train": 0,
+      "share_word_cosine_ge_0.5_to_train_benign": 0.0,
+      "share_with_in_set_neighbor_ge_0.5": 0.0
+    },
+    "test_ood.csv": {
+      "n": 170,
+      "exact_in_new_train": 0,
+      "share_word_cosine_ge_0.5_to_train_benign": 0.0,
+      "share_with_in_set_neighbor_ge_0.5": 0.011764705882352941
+    }
+  },
+  "leakage_old_splits": {
+    "standard_injections_vs_train (char cosine)": {
+      "n": 131,
+      ">=0.85": 0.061068702290076333,
+      ">=0.95": 0.061068702290076333
+    },
+    "standard_benign_vs_train (word cosine)": {
+      "n": 132,
+      ">=0.25": 0.3409090909090909,
+      ">=0.35": 0.22727272727272727
+    },
+    "evasion_vs_train (char cosine, after NFKC/zero-width/leet normalization)": {
+      "n": 150,
+      ">=0.85": 0.4,
+      ">=0.95": 0.4
+    }
+  },
+  "leakage_new_splits": {
+    "standard_injections_vs_train (char cosine)": {
+      "n": 111,
+      ">=0.85": 0.0,
+      ">=0.95": 0.0
+    },
+    "standard_benign_vs_train (word cosine)": {
+      "n": 131,
+      ">=0.25": 0.0,
+      ">=0.35": 0.0
+    },
+    "evasion_vs_train (char cosine, after NFKC/zero-width/leet normalization)": {
+      "n": 177,
+      ">=0.85": 0.0,
+      ">=0.95": 0.0
+    }
+  },
+  "validation": {
+    "exact_key_overlap_train_vs_val": 0,
+    "injection_val_pairs_above_hard_threshold_vs_train": 0,
+    "injection_val_borderline_pairs_above_group_threshold_vs_train": 0,
+    "injection_val_max_sim_to_train_p95": 0.6649021638051908,
+    "benign_val_pairs_above_hard_threshold_vs_train": 0,
+    "benign_val_borderline_pairs_above_group_threshold_vs_train": 2,
+    "benign_val_max_sim_to_train_p95": 0.24476016984494398,
+    "exact_key_overlap_train_vs_test": 0,
+    "injection_test_pairs_above_hard_threshold_vs_train": 0,
+    "injection_test_borderline_pairs_above_group_threshold_vs_train": 0,
+    "injection_test_max_sim_to_train_p95": 0.692755059862547,
+    "benign_test_pairs_above_hard_threshold_vs_train": 0,
+    "benign_test_borderline_pairs_above_group_threshold_vs_train": 0,
+    "benign_test_max_sim_to_train_p95": 0.2359710054551182,
+    "val_evasion_deobf_key_in_train": 0,
+    "test_evasion_deobf_key_in_train": 0
+  }
+}
