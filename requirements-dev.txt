@@ -4,3 +4,5 @@ scikit-learn
 sentence-transformers
 faiss-cpu
 datasets
+sentencepiece
+protobuf
