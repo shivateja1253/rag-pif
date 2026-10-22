@@ -36,7 +36,9 @@ import pandas as pd
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "streamlit"))
+sys.path.insert(0, str(REPO / "scripts"))
 from layer1_filter import layer1_filter  # noqa: E402  single source of truth for Layer 1
+from textnorm import prenorm  # noqa: E402
 
 SETS = {
     "standard": "test.csv",
@@ -224,6 +226,8 @@ def main():
     ap.add_argument("--l3-subfolder", default="", help="e.g. experiments/v3")
     ap.add_argument("--tokenizer", default=None, help="defaults to --l3 (root tokenizer)")
     ap.add_argument("--no-l3", action="store_true", help="skip Layer 3 (evaluate L1+L2 only)")
+    ap.add_argument("--prenorm", choices=["none", "full"], default="none",
+                    help="normalization front-end applied to the text before scoring (scripts/textnorm.py)")
     ap.add_argument("--device", default="auto", help="auto | cpu | cuda (cpu is most deterministic)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--repeat", type=int, default=1)
@@ -261,7 +265,8 @@ def main():
     for name, df in data.items():
         texts = df["text"].astype(str).tolist()
         y = df["label"].astype(int).to_numpy()
-        runs = [score_texts(texts, models) for _ in range(args.repeat)]
+        scored_texts = [prenorm(t, args.prenorm) for t in texts]
+        runs = [score_texts(scored_texts, models) for _ in range(args.repeat)]
         sc = runs[0]
         if args.repeat > 1:
             repeat_report[name] = {
@@ -287,7 +292,7 @@ def main():
     pd.DataFrame(cascade_rows).to_csv(run_dir / "cascade_summary.csv", index=False)
     result = {
         "meta": {
-            "tag": args.tag, "utc": stamp, "seed": args.seed, "device": models["device"],
+            "tag": args.tag, "utc": stamp, "seed": args.seed, "prenorm": args.prenorm, "device": models["device"],
             "thresholds": {"l2": L2_THRESHOLD, "l3": L3_THRESHOLD},
             "l3": l3_ref, "hashes": hashes, "git": git_info(), "libs": lib_versions(),
             "runtime_s": round(time.time() - t0, 1),

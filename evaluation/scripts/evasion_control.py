@@ -42,22 +42,7 @@ from build_splits import to_fullwidth, to_leet, to_zero_width  # noqa: E402
 TRANSFORMS = {"plain": lambda t: t, "fullwidth": to_fullwidth, "leetspeak": to_leet, "zero_width": to_zero_width}
 CATEGORY_TO_TRANSFORM = {"unicode": "fullwidth", "obfuscated": "leetspeak", "zero_width": "zero_width"}
 MODES = ["none", "full"]
-LEET_BACK = str.maketrans({"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s"})
-
-
-def prenorm(text, mode):
-    if mode == "none":
-        return text
-    t = unicodedata.normalize("NFKC", text).replace("\u200b", " ")
-    t = "".join(ch for ch in t if unicodedata.category(ch) != "Cf")
-    t = re.sub(r"[ \t]+", " ", t)
-    # leetspeak: only undo it when the TEXT looks leeted (many tokens mix letters with leet characters),
-    # so ordinary numbers like "2024" in normal text are left alone
-    toks = t.split()
-    mixed = sum(1 for k in toks if re.search(r"[A-Za-z]", k) and re.search(r"[0-9@$]", k))
-    if mixed >= 2 and mixed / max(len(toks), 1) >= 0.25:
-        t = t.translate(LEET_BACK)
-    return t
+from textnorm import LEET_BACK, prenorm  # noqa: E402,F401
 
 
 def build_texts(data_dir):

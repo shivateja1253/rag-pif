@@ -39,6 +39,7 @@ def test_run_one_skips_finished_and_writes_json(tmp_path, monkeypatch):
             tag = cmd[cmd.index("--tag") + 1]
             d = work / "runs" / f"{tag}_20260101T000000Z"; d.mkdir(parents=True)
             (d / "results.json").write_text(json.dumps(fake_results()))
+            (d / "decisions_standard.csv").write_text("text_sha1,label\n")
 
     monkeypatch.setattr(rs.subprocess, "run", fake_run)
     a = SimpleNamespace(results_dir=str(res), work_dir=str(work), data_dir="data/v2_1", extra_file="x.csv",
@@ -59,3 +60,29 @@ def test_summarize_prints_mean_and_std(tmp_path, capsys):
     rs.summarize(str(tmp_path))
     out = capsys.readouterr().out
     assert "0.200+-0.141" in out and "C0_none" in out
+
+
+def test_run_one_saves_decisions_for_each_prenorm_mode(tmp_path, monkeypatch):
+    work, res = tmp_path / "work", tmp_path / "res"
+
+    def fake_run(cmd, check):
+        if "train_l3.py" in cmd[1]:
+            out = Path(cmd[cmd.index("--out") + 1]); out.mkdir(parents=True, exist_ok=True); (out / "final").mkdir(exist_ok=True)
+            (out / "train_meta.json").write_text(json.dumps({"train_rows": 1, "best_val": {}}))
+        else:
+            tag = cmd[cmd.index("--tag") + 1]
+            assert cmd[cmd.index("--data-dir") + 1] == "data/heldout_set" and "--prenorm" in cmd
+            d = work / "runs" / f"{tag}_2026"; d.mkdir(parents=True)
+            (d / "results.json").write_text(json.dumps(fake_results())); (d / "decisions_ood.csv").write_text("x\n")
+
+    monkeypatch.setattr(rs.subprocess, "run", fake_run)
+    a = SimpleNamespace(results_dir=str(res), work_dir=str(work), data_dir="data/v2_1", eval_dir="data/heldout_set",
+                        extra_file="x.csv", faiss="f.faiss", device="cpu", select="last",
+                        prenorm_modes="none,full", save_decisions=True)
+    assert rs.run_one("C0_none", 3, a) == "done"
+    assert (res / "decisions" / "C0_none_s3__none" / "decisions_ood.csv").exists()
+    assert (res / "decisions" / "C0_none_s3__full" / "decisions_ood.csv").exists()
+
+
+def test_plan_can_be_limited_to_conditions():
+    assert rs.plan([1, 2], ["C0_none", "C3_both"]) == [("C0_none", 1), ("C3_both", 1), ("C0_none", 2), ("C3_both", 2)]

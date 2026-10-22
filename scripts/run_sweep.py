@@ -35,11 +35,11 @@ COLS = [("std_det", "std det"), ("std_fpr", "std FPR"), ("evas_det", "evas det")
         ("adv_fpr", "adv FPR"), ("ood_fpr", "ood FPR")]
 
 
-def plan(seeds):
+def plan(seeds, conds=None):
     """Paired C0/C3 first for every seed, then the single-source conditions."""
     runs = [(c, s) for s in seeds for c in ("C0_none", "C3_both")]
     runs += [(c, s) for s in seeds for c in ("C1_adv", "C2_ent")]
-    return runs
+    return [r for r in runs if conds is None or r[0] in conds]
 
 
 def compact(results):
@@ -58,24 +58,37 @@ def run_one(cond, seed, a):
     res_path = Path(a.results_dir) / f"{tag}.json"
     if res_path.exists():
         return "skipped"
+    eval_dir = getattr(a, "eval_dir", None) or a.data_dir
+    modes = [m for m in getattr(a, "prenorm_modes", "none").split(",") if m]
     model_root = Path(a.work_dir) / tag
     ckpt = f"/tmp/ckpt_{tag}"
     cmd = [sys.executable, "scripts/train_l3.py", "--train", f"{a.data_dir}/train.csv",
-           "--val", f"{a.data_dir}/val.csv", "--out", str(model_root), "--seed", str(seed), "--ckpt-dir", ckpt, "--select", a.select]
+           "--val", f"{a.data_dir}/val.csv", "--out", str(model_root), "--seed", str(seed), "--ckpt-dir", ckpt,
+           "--select", a.select]
     if COND_SOURCES[cond]:
         cmd += ["--extra", a.extra_file, "--extra-sources", COND_SOURCES[cond]]
     subprocess.run(cmd, check=True)
-    bench = [sys.executable, "evaluation/scripts/run_benchmark.py", "--tag", tag, "--data-dir", a.data_dir,
-             "--faiss", a.faiss, "--l3", str(model_root / "final"), "--device", a.device,
-             "--out-dir", str(Path(a.work_dir) / "runs"), "--seed", str(seed)]
-    subprocess.run(bench, check=True)
-    rj = sorted((Path(a.work_dir) / "runs").glob(f"{tag}_*/results.json"))[-1]
-    r = json.loads(rj.read_text())
+    first = None
+    for mode in modes:
+        btag = f"{tag}__{mode}"
+        bench = [sys.executable, "evaluation/scripts/run_benchmark.py", "--tag", btag, "--data-dir", eval_dir,
+                 "--faiss", a.faiss, "--l3", str(model_root / "final"), "--device", a.device,
+                 "--out-dir", str(Path(a.work_dir) / "runs"), "--seed", str(seed), "--prenorm", mode]
+        subprocess.run(bench, check=True)
+        rj = sorted((Path(a.work_dir) / "runs").glob(f"{btag}_*/results.json"))[-1]
+        if getattr(a, "save_decisions", False):
+            dst = Path(a.results_dir) / "decisions" / btag
+            dst.mkdir(parents=True, exist_ok=True)
+            for f in rj.parent.glob("decisions_*.csv"):
+                shutil.copy(f, dst / f.name)
+        if first is None:
+            r = json.loads(rj.read_text())
+            first = (r["cascade"], compact(r))
     meta = json.loads((model_root / "train_meta.json").read_text())
     payload = {"cond": cond, "seed": seed, "train_rows": meta["train_rows"],
                "best_val_f1": meta["best_val"].get("eval_f1"), "selection": meta.get("selection"),
-               "eval_history": meta.get("eval_history"),
-               "metrics": compact(r), "cascade": r["cascade"]}
+               "eval_history": meta.get("eval_history"), "prenorm_modes": modes, "eval_dir": eval_dir,
+               "metrics": first[1], "cascade": first[0]}
     res_path.parent.mkdir(parents=True, exist_ok=True)
     res_path.write_text(json.dumps(payload, indent=2))
     shutil.rmtree(model_root, ignore_errors=True)
@@ -120,6 +133,10 @@ def main():
     ap.add_argument("--faiss", default="datasets/injection_index_v2_1.faiss")
     ap.add_argument("--results-dir", default="/content/drive/MyDrive/rag-pif/sweep_last")
     ap.add_argument("--select", default="last", choices=["last", "val_loss", "val_f1"])
+    ap.add_argument("--eval-dir", default=None, help="folder with the test sets to benchmark on (default: --data-dir)")
+    ap.add_argument("--conds", default=None, help="comma list, e.g. C0_none,C3_both (default: all four)")
+    ap.add_argument("--prenorm-modes", default="none", help="comma list of none,full: benchmark once per mode")
+    ap.add_argument("--save-decisions", action="store_true", help="copy per-sample decision CSVs into results-dir/decisions")
     ap.add_argument("--work-dir", default="/content/sweep_work")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--summarize", action="store_true")
@@ -127,7 +144,8 @@ def main():
 
     if not a.summarize:
         seeds = [int(x) for x in a.seeds.split(",")]
-        todo = plan(seeds)
+        conds = [c.strip() for c in a.conds.split(",")] if a.conds else None
+        todo = plan(seeds, conds)
         done_now = 0
         for cond, seed in todo:
             if a.max_runs and done_now >= a.max_runs:
