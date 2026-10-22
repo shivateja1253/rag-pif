@@ -1,0 +1,1 @@
+Pre-declared rule (fixed before any held-out run): smallest L2 threshold in {0.50..0.95, step 0.05} with dev FPR on confirmed-benign adversarial items <= 0.10 and dev OOD FPR <= 0.05; otherwise L2 off. Result on dev: t* = 0.65.
