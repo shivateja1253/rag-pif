@@ -27,7 +27,9 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import run_benchmark as rb  # noqa: E402  reuse metrics(), SETS, find_file
+from textnorm import prenorm  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 THRESHOLDS = [0.5, 0.9]
@@ -81,6 +83,8 @@ def main():
     ap.add_argument("--data-dir", default=str(REPO / "data" / "v2_1"))
     ap.add_argument("--detectors", default=",".join(DETECTORS))
     ap.add_argument("--out-dir", default=str(REPO / "evaluation" / "runs"))
+    ap.add_argument("--prenorm", choices=["none", "full"], default="none",
+                    help="normalization front-end applied before scoring (scripts/textnorm.py)")
     a = ap.parse_args()
 
     import gc
@@ -91,7 +95,7 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     data = {n: pd.read_csv(rb.find_file(a.data_dir, f)) for n, f in rb.SETS.items()}
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    run_dir = Path(a.out_dir) / f"baselines_{stamp}"
+    run_dir = Path(a.out_dir) / f"baselines_{a.prenorm}_{stamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
     print(f"device {device} | transformers {transformers.__version__} | sets "
           f"{ {n: len(d) for n, d in data.items()} }")
@@ -104,7 +108,8 @@ def main():
             model = AutoModelForSequenceClassification.from_pretrained(spec["repo"], **spec["kwargs"]).to(device).eval()
             idx = injection_index(model.config.id2label)
             print(f"\n[{name}] id2label={dict(model.config.id2label)} -> injection index {idx}")
-            probs = {n: score(d["text"].astype(str).tolist(), tok, model, idx, device) for n, d in data.items()}
+            probs = {n: score([prenorm(t, a.prenorm) for t in d["text"].astype(str).tolist()], tok, model, idx, device)
+                     for n, d in data.items()}
             for n, d in data.items():
                 pd.DataFrame({"text_sha1": [hashlib.sha1(t.encode("utf-8")).hexdigest() for t in d["text"].astype(str)],
                               "label": d["label"].astype(int), "p_injection": probs[n]}
